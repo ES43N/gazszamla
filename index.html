@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gázszámla</title>
+    <style>
+        form label,
+        form input,
+        form button {
+            display: block;
+            margin-bottom: 10px;
+        }
+
+        /* Az egész oldal alap térközei */
+        body {
+            font-family: sans-serif;
+            max-width: 400px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        /* Az űrlap elemei közötti térköz */
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        /* Input mezők belső térköze */
+        input {
+            padding: 10px;
+            font-size: 16px;
+        }
+
+        /* A rögzített elemek listája */
+        #list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        /* Maguk az egyes rögzített sorok */
+        #list div {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f1f3f5;
+            padding: 10px 14px;
+            border-radius: 6px;
+        }
+
+        #confirm {
+            width: 100%;
+            padding: 12px;
+            background: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 5px;
+        }
+
+        #list button {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Gázszámla</h1>
+    <p>Számold ki a gázszámlát!</p>
+
+    <!-- Kedvezményes keret számláló doboz -->
+    <div id="szamlaloKeret" style="padding: 12px; border-radius: 6px; margin-bottom: 15px; font-weight: bold; text-align: center;">
+        <span id="szamlaloSzoveg">Betöltés...</span>
+    </div>
+
+    <!-- Itt jelennek meg a rögzített adatok -->
+    <div id="list"></div>
+
+    <!-- Az űrlap -->
+    <form id="add">
+        <label for="datum">Év és hónap:</label>
+        <input type="month" id="datum">
+
+        <label for="oraallas">Óra állása:</label>
+        <input type="number" id="oraallas">
+
+        <button id="confirm">Hozzáad</button>
+    </form>
+
+    <script>
+const MAX_KERET = 1729;
+
+const honapNevek = [
+    "", "Január", "Február", "Március", "Április", "Május", "Június",
+    "Július", "Augusztus", "Szeptember", "Október", "November", "December"
+];
+
+// Betöltés + régi kulcsok ("2026. November") átalakítása "2026-11" formára
+let gaz = {};
+try {
+    const nyers = JSON.parse(localStorage.getItem("gazOraAllasok")) || {};
+    for (const k in nyers) {
+        let kulcs = k;
+        if (k.includes(".")) {
+            const reszek = k.split(".");
+            const szam = honapNevek.indexOf(reszek[1].trim());
+            if (szam > 0) kulcs = reszek[0].trim() + "-" + String(szam).padStart(2, "0");
+        }
+        gaz[kulcs] = nyers[k];
+    }
+} catch (e) {
+    gaz = {};
+}
+
+function szamma(x) {
+    return parseFloat(String(x).replace(",", "."));
+}
+
+function szovegesDatum(kulcs) {
+    const [ev, ho] = kulcs.split("-");
+    return `${ev}. ${honapNevek[parseInt(ho, 10)]}`;
+}
+
+function rendezettAdatok() {
+    return Object.keys(gaz)
+        .map(k => ({ kulcs: k, ertek: szamma(gaz[k]) }))
+        .filter(a => !isNaN(a.ertek))
+        .sort((a, b) => a.kulcs.localeCompare(b.kulcs));
+}
+
+function frissitSzamlalot() {
+    const keretDiv = document.getElementById("szamlaloKeret");
+    const szovegSpan = document.getElementById("szamlaloSzoveg");
+
+    // Aktuális elszámolási időszak: aug. 1 - júl. 31
+    const now = new Date();
+    const ev = now.getFullYear();
+    const honap = now.getMonth() + 1;
+    const kezdoEv = honap >= 8 ? ev : ev - 1;
+    const vegoEv = kezdoEv + 1;
+
+    const tol = `${kezdoEv}-08`;
+    const ig = `${vegoEv}-07`;
+
+    // Az időszak összes bejegyzése, mindegy melyik hónaptól van
+    const adatok = rendezettAdatok().filter(a => a.kulcs >= tol && a.kulcs <= ig);
+
+    // Fogyasztás = a bejegyzések összege
+    let fogyasztas = 0;
+    for (const a of adatok) {
+        fogyasztas += a.ertek;
+    }
+    fogyasztas = Math.round(fogyasztas * 100) / 100;
+
+    const maradek = Math.round(Math.max(0, MAX_KERET - fogyasztas) * 100) / 100;
+
+    let html =
+        `Kedvezményes keret (${kezdoEv}.08.01 - ${vegoEv}.07.31):<br>` +
+        `Még felhasználható: <b>${maradek} m³</b> (Fogyasztva: ${fogyasztas} / ${MAX_KERET} m³)`;
+
+    if (maradek === 0) {
+        keretDiv.style.backgroundColor = "#f8d7da";
+        keretDiv.style.color = "#721c24";
+        html += "<br><b>ELFOGYOTT A KEDVEZMÉNYES KERET!</b>";
+    } else if (maradek < 300) {
+        keretDiv.style.backgroundColor = "#fff3cd";
+        keretDiv.style.color = "#856404";
+        html += "<br><b>Figyelem: A keret hamarosan elfogy!</b>";
+    } else {
+        keretDiv.style.backgroundColor = "#d4edda";
+        keretDiv.style.color = "#155724";
+    }
+
+    szovegSpan.innerHTML = html;
+}
+
+function frissitListat() {
+    let html = "";
+    for (const a of rendezettAdatok()) {
+        html += `<div>${szovegesDatum(a.kulcs)}: ${gaz[a.kulcs]} m³ ` +
+                `<button type="button" class="torol" data-kulcs="${a.kulcs}">X</button></div>`;
+    }
+    document.getElementById("list").innerHTML = html;
+
+    // Előbb a számláló, hogy egy mentési hiba ne akassza meg
+    frissitSzamlalot();
+
+    try {
+        localStorage.setItem("gazOraAllasok", JSON.stringify(gaz));
+    } catch (e) {
+        console.warn("A mentés nem működik ebben a böngészőben:", e);
+    }
+}
+
+// Törlés
+document.getElementById("list").addEventListener("click", function (e) {
+    if (e.target.classList.contains("torol")) {
+        delete gaz[e.target.dataset.kulcs];
+        frissitListat();
+    }
+});
+
+// Hozzáadás
+document.getElementById("add").addEventListener("submit", function (e) {
+    e.preventDefault();
+
+    const datum = document.getElementById("datum").value; // pl. "2026-11"
+    const ora = document.getElementById("oraallas").value;
+
+    if (datum !== "" && ora !== "" && !isNaN(szamma(ora))) {
+        gaz[datum] = ora;
+        frissitListat();
+        document.getElementById("datum").value = "";
+        document.getElementById("oraallas").value = "";
+    }
+});
+
+frissitListat();
+    </script>
+</body>
+</html>
