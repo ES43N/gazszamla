@@ -97,7 +97,7 @@
         <label for="datum">Év és hónap:</label>
         <input type="month" id="datum">
 
-        <label for="oraallas">Havi fogyasztás:</label>
+        <label for="oraallas">Óra állása:</label>
         <input type="number" id="oraallas">
 
         <button id="confirm">Hozzáad</button>
@@ -155,16 +155,18 @@ function frissitSzamlalot() {
     const kezdoEv = honap >= 8 ? ev : ev - 1;
     const vegoEv = kezdoEv + 1;
 
-    const tol = `${kezdoEv}-08`;
+    // Az előző júliusi állás is beleszámít (kiindulópont), ha fel van víve
+    const tol = `${kezdoEv}-07`;
     const ig = `${vegoEv}-07`;
 
-    // Az időszak összes bejegyzése, mindegy melyik hónaptól van
+    // Az időszak összes óraállása, időrendben, mindegy melyik hónaptól van
     const adatok = rendezettAdatok().filter(a => a.kulcs >= tol && a.kulcs <= ig);
 
-    // Fogyasztás = a bejegyzések összege
+    // Fogyasztás = legutolsó óraállás - legkorábbi óraállás
     let fogyasztas = 0;
-    for (const a of adatok) {
-        fogyasztas += a.ertek;
+    if (adatok.length >= 2) {
+        fogyasztas = adatok[adatok.length - 1].ertek - adatok[0].ertek;
+        if (fogyasztas < 0) fogyasztas = 0;
     }
     fogyasztas = Math.round(fogyasztas * 100) / 100;
 
@@ -173,6 +175,10 @@ function frissitSzamlalot() {
     let html =
         `Kedvezményes keret (${kezdoEv}.08.01 - ${vegoEv}.07.31):<br>` +
         `Még felhasználható: <b>${maradek} m³</b> (Fogyasztva: ${fogyasztas} / ${MAX_KERET} m³)`;
+
+    if (adatok.length < 2) {
+        html += `<br><small>Legalább 2 óraállás kell a számoláshoz.</small>`;
+    }
 
     if (maradek === 0) {
         keretDiv.style.backgroundColor = "#f8d7da";
